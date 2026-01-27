@@ -6,7 +6,7 @@ ReAct-style autonomous agents with tools and memory
 import json
 import inspect
 import os
-from typing import Callable, List, Dict, Any, Optional, Union
+from typing import Callable, List, Dict, Any, Union
 from dataclasses import dataclass, field
 from functools import wraps
 
@@ -25,7 +25,8 @@ def tool(func: Callable = None, *, name: str = None, description: str = None):
         def another_function(x: int) -> int:
             return x * 2
     """
-    def decorator(f: Callable) -> 'Tool':
+
+    def decorator(f: Callable) -> "Tool":
         return Tool(f, name=name, description=description)
 
     if func is not None:
@@ -38,12 +39,7 @@ def tool(func: Callable = None, *, name: str = None, description: str = None):
 class Tool:
     """Wrapper class for tool functions"""
 
-    def __init__(
-        self,
-        func: Callable,
-        name: str = None,
-        description: str = None
-    ):
+    def __init__(self, func: Callable, name: str = None, description: str = None):
         self.func = func
         self.name = name or func.__name__
         self.description = description or func.__doc__ or f"Execute {self.name}"
@@ -57,7 +53,7 @@ class Tool:
     def to_openai_tool(self) -> dict:
         """Convert to OpenAI tool format"""
         sig = inspect.signature(self.func)
-        type_hints = getattr(self.func, '__annotations__', {})
+        type_hints = getattr(self.func, "__annotations__", {})
 
         properties = {}
         required = []
@@ -73,7 +69,9 @@ class Tool:
                 param_type = "number"
             elif hint == bool:
                 param_type = "boolean"
-            elif hint == list or (hasattr(hint, '__origin__') and hint.__origin__ == list):
+            elif hint == list or (
+                hasattr(hint, "__origin__") and hint.__origin__ == list
+            ):
                 param_type = "array"
 
             properties[param_name] = {"type": param_type}
@@ -90,15 +88,16 @@ class Tool:
                 "parameters": {
                     "type": "object",
                     "properties": properties,
-                    "required": required
-                }
-            }
+                    "required": required,
+                },
+            },
         }
 
 
 @dataclass
 class Memory:
     """Simple memory store for agent conversations"""
+
     short_term: List[Dict] = field(default_factory=list)
     long_term: Dict[str, Any] = field(default_factory=dict)
 
@@ -137,14 +136,16 @@ class Agent:
         model: str = "gpt-4-turbo",
         max_iterations: int = 10,
         system_prompt: str = None,
-        api_key: str = None
+        api_key: str = None,
     ):
         # Import here to allow tool-only usage without API key
         from openai import OpenAI
 
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or pass api_key parameter.")
+            raise ValueError(
+                "OpenAI API key required. Set OPENAI_API_KEY or pass api_key parameter."
+            )
 
         self.client = OpenAI(api_key=self.api_key)
         self.model = model
@@ -153,19 +154,24 @@ class Agent:
 
         # Convert callables to Tools and build registry
         self.tools: Dict[str, Tool] = {}
-        for t in (tools or []):
+        for t in tools or []:
             if isinstance(t, Tool):
                 self.tools[t.name] = t
             elif callable(t):
                 tool_obj = Tool(t)
                 self.tools[tool_obj.name] = tool_obj
 
-        self.system_prompt = system_prompt or """You are an autonomous AI agent.
+        self.system_prompt = (
+            system_prompt
+            or """You are an autonomous AI agent.
 You have access to tools to help accomplish tasks.
 Think step by step, use tools when needed, and provide a final answer.
 Always explain your reasoning before using tools."""
+        )
 
-    def add_tool(self, func: Callable, name: str = None, description: str = None) -> None:
+    def add_tool(
+        self, func: Callable, name: str = None, description: str = None
+    ) -> None:
         """Add a tool to the agent"""
         tool_obj = Tool(func, name=name, description=description)
         self.tools[tool_obj.name] = tool_obj
@@ -188,7 +194,7 @@ Always explain your reasoning before using tools."""
 
         messages = [
             {"role": "system", "content": self.system_prompt},
-            *self.memory.get_context()
+            *self.memory.get_context(),
         ]
 
         openai_tools = [t.to_openai_tool() for t in self.tools.values()]
@@ -198,7 +204,7 @@ Always explain your reasoning before using tools."""
                 model=self.model,
                 messages=messages,
                 tools=openai_tools if openai_tools else None,
-                tool_choice="auto" if openai_tools else None
+                tool_choice="auto" if openai_tools else None,
             )
 
             message = response.choices[0].message
@@ -229,11 +235,13 @@ Always explain your reasoning before using tools."""
                 else:
                     result = f"Error: Unknown tool '{tool_name}'"
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": str(result)
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(result),
+                    }
+                )
 
         return f"Max iterations ({self.max_iterations}) reached without final answer"
 
@@ -270,10 +278,10 @@ class Orchestrator:
                     "content": f"""You are a task planner. Available agents: {list(self.agents.keys())}.
 Create a step-by-step plan assigning each step to an appropriate agent.
 Format: One step per line, format: "AGENT_NAME: task description"
-"""
+""",
                 },
-                {"role": "user", "content": task}
-            ]
+                {"role": "user", "content": task},
+            ],
         )
 
         plan = plan_response.choices[0].message.content
@@ -284,7 +292,7 @@ Format: One step per line, format: "AGENT_NAME: task description"
             try:
                 result = agent.run(
                     f"As '{name}', contribute to this task: {task}\n\nPlan:\n{plan}",
-                    clear_memory=True
+                    clear_memory=True,
                 )
                 results["agent_results"][name] = result
             except Exception as e:
@@ -299,7 +307,7 @@ def calculate(expression: str) -> str:
     """Safely evaluate a mathematical expression"""
     allowed = set("0123456789+-*/().% ")
     if not all(c in allowed for c in expression):
-        return f"Error: Invalid characters in expression"
+        return "Error: Invalid characters in expression"
 
     try:
         result = eval(expression, {"__builtins__": {}}, {})
@@ -312,6 +320,7 @@ def calculate(expression: str) -> str:
 def get_current_time() -> str:
     """Get the current date and time"""
     from datetime import datetime
+
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
